@@ -39,9 +39,10 @@
   <div class="bar" role="toolbar" aria-label="Camera views">
     <button data-view="front" aria-pressed="true">Front</button>
     <button data-view="left">Left · KV &amp; rack</button>
-    <button data-view="right">Right · Brand KV</button>
+    <button data-view="right">Right · Brand KV &amp; board</button>
     <button data-view="host">Host seat</button>
     <button data-view="top">Plan</button>
+    <button id="hosts" aria-pressed="false">Show hosts</button>
     <button id="dims" aria-pressed="false">Dimensions</button>
     <button id="spin" aria-pressed="false">Turntable</button>
   </div>
@@ -127,7 +128,7 @@ async function build() {
   slats.receiveShadow = true; scene.add(slats);
 
   /* ---- centre lightbox: program logo, ~38 in across ---- */
-  const R = 1.58, LB_Y = 4.25;
+  const R = 1.2, LB_Y = 5.12;   // ~29 in, logo band clears a seated host (head top ~4.4 ft)
   const faceTex = canvasTex(1024, 1024, (g, w, h) => {
     g.fillStyle = '#050505'; g.fillRect(0, 0, w, h);
     const sx = 212, sy = 181, sw = 1204, sh = 585, dw = 860, dh = dw * sh / sw;
@@ -195,9 +196,72 @@ async function build() {
   const plinth = new THREE.Mesh(new THREE.BoxGeometry(RW + .1, .12, RD + .1), M.black);
   plinth.position.set(rackPos.x, .06, rackPos.z); plinth.rotation.y = rack.rotation.y; scene.add(plinth);
 
+
+  /* helper: a rod between two points */
+  function rod(a, b, r, mat, parent) {
+    const d = b.clone().sub(a), m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, d.length(), 10), mat);
+    m.position.copy(a).addScaledVector(d, .5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    m.castShadow = true; parent.add(m); return m;
+  }
+
+  /* ---- tactical board on a tripod easel: right side, after the Brand KV, at the curtain ---- */
+  const dirR = new THREE.Vector3(Math.sin(CURTAIN_SPLAY), 0, Math.cos(CURTAIN_SPLAY));
+  const inwardR = new THREE.Vector3(-Math.cos(CURTAIN_SPLAY), 0, Math.sin(CURTAIN_SPLAY));
+  const easelPos = endR.clone().addScaledVector(dirR, 2.6).addScaledVector(inwardR, .7);
+  const easel = new THREE.Group(); easel.position.copy(easelPos);
+  const lookE = new THREE.Vector3(-1.2, 0, 9).sub(easelPos); easel.rotation.y = Math.atan2(lookE.x, lookE.z);
+  scene.add(easel);
+  const BW = 2.0, BH = 2.8, BY = 2.75;          // board 2 x 2.8 ft, bottom edge at 2.75 ft
+  const pitchTex = canvasTex(1000, 1400, (g, w, h) => {
+    g.fillStyle = '#f8f8f6'; g.fillRect(0, 0, w, h);
+    const m = 60, L = m, T = m, W = w - 2*m, Hh = h - 2*m;
+    g.strokeStyle = '#3b4048'; g.lineWidth = 6; g.lineCap = 'round';
+    g.strokeRect(L, T, W, Hh);
+    g.beginPath(); g.moveTo(L, h/2); g.lineTo(L + W, h/2); g.stroke();
+    g.beginPath(); g.arc(w/2, h/2, 115, 0, Math.PI*2); g.stroke();
+    g.fillStyle = '#3b4048'; g.beginPath(); g.arc(w/2, h/2, 8, 0, Math.PI*2); g.fill();
+    [[T, 1], [T + Hh, -1]].forEach(([y0, s]) => {
+      g.strokeRect(w/2 - 280, s > 0 ? y0 : y0 - 230, 560, 230);
+      g.strokeRect(w/2 - 125, s > 0 ? y0 : y0 - 90, 250, 90);
+      g.beginPath(); g.arc(w/2, y0 + s*165, 7, 0, Math.PI*2); g.fill();
+      g.beginPath(); g.arc(w/2, y0 + s*165, 95, s > 0 ? .25*Math.PI : 1.25*Math.PI, s > 0 ? .75*Math.PI : 1.75*Math.PI); g.stroke();
+      g.strokeRect(w/2 - 60, s > 0 ? y0 - 26 : y0, 120, 26);
+    });
+    const mag = (x, y, c, n, ink) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, 24, 0, Math.PI*2); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 2; g.stroke(); g.fillStyle = ink; g.font = '700 22px "Red Hat Display", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, x, y + 1); };
+    const red = [[500,175],[300,330],[440,360],[600,350],[720,320],[330,520],[500,470],[680,520],[420,600],[600,610],[260,640]];
+    const yel = [[500,1225],[290,1060],[430,1080],[580,1070],[730,1050],[350,880],[520,930],[700,880],[440,800],[620,790],[760,760]];
+    red.forEach(([x, y], i) => mag(x, y, '#d6323b', i + 1, '#fff'));
+    yel.forEach(([x, y], i) => mag(x, y, '#f1c232', i + 1, '#1c1c1c'));
+    for (let i = 0; i < 6; i++) { mag(110, 150 + i*58, '#d6323b', 12 + i, '#fff'); mag(110, 900 + i*58, '#f1c232', 12 + i, '#1c1c1c'); }
+    const arrow = (pts) => { g.strokeStyle = '#111'; g.lineWidth = 5; g.beginPath(); g.moveTo(...pts[0]);
+      g.quadraticCurveTo(pts[1][0], pts[1][1], pts[2][0], pts[2][1]); g.stroke();
+      const [x1, y1] = pts[1], [x2, y2] = pts[2], a = Math.atan2(y2 - y1, x2 - x1);
+      g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - 26*Math.cos(a - .45), y2 - 26*Math.sin(a - .45)); g.moveTo(x2, y2); g.lineTo(x2 - 26*Math.cos(a + .45), y2 - 26*Math.sin(a + .45)); g.stroke(); };
+    arrow([[430, 1080], [380, 760], [440, 440]]); arrow([[730, 1050], [840, 800], [760, 560]]); arrow([[520, 930], [610, 760], [500, 640]]);
+    g.setLineDash([16, 14]); g.strokeStyle = '#111'; g.lineWidth = 4; g.beginPath(); g.moveTo(350, 880); g.lineTo(560, 820); g.stroke(); g.setLineDash([]);
+    g.font = '700 46px "Red Hat Display", Arial'; g.fillStyle = '#111'; g.fillText('×', 250, 760);
+  });
+  const frameM = std({ color:0x16171a, metalness:.7, roughness:.35 });
+  const boardBack = new THREE.Mesh(new THREE.BoxGeometry(BW + .14, BH + .14, .07), frameM);
+  boardBack.position.set(0, BY + BH/2, 0); boardBack.castShadow = true; easel.add(boardBack);
+  const boardFace = new THREE.Mesh(new THREE.PlaneGeometry(BW, BH), std({ map:pitchTex, roughness:.25, metalness:0 }));
+  boardFace.position.set(0, BY + BH/2, .037); easel.add(boardFace);
+  const tray = new THREE.Mesh(new THREE.BoxGeometry(BW * .7, .05, .16), frameM); tray.position.set(0, BY - .05, .07); easel.add(tray);
+  const pen = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, .45, 10), std({ color:0x111111, roughness:.6 }));
+  pen.rotation.z = Math.PI/2; pen.position.set(.35, BY - .005, .08); easel.add(pen);
+  const apex = new THREE.Vector3(0, BY + .25, -.12);
+  rod(apex, new THREE.Vector3(-.8, 0, .5), .03, frameM, easel);
+  rod(apex, new THREE.Vector3(.8, 0, .5), .03, frameM, easel);
+  rod(apex, new THREE.Vector3(0, 0, -1.0), .03, frameM, easel);
+  rod(apex, new THREE.Vector3(0, BY + BH * .75, -.08), .025, frameM, easel);
+  [[-.8, .5], [.8, .5], [0, -1.0]].forEach(([x, z]) => { const f = new THREE.Mesh(new THREE.SphereGeometry(.05, 10, 8), frameM); f.position.set(x, .03, z); easel.add(f); });
+  const boardLight = new THREE.SpotLight(0xfff0d8, 24, 12, .45, .8, 1.3);
+  boardLight.position.set(easelPos.x - 2.2, H - .2, easelPos.z + 2.4); boardLight.target = boardFace; scene.add(boardLight);
+
   /* ---- track lights ---- */
   const rail = new THREE.Mesh(new THREE.BoxGeometry(5.6, .08, .1), M.black); rail.position.set(0, H - .06, 1.15); scene.add(rail);
-  [[-2.3, -2.6], [-.85, -1.4], [.85, 1.4], [2.3, 2.6]].forEach(([x, tx], i) => {
+  [[-2.65, -2.9], [-1.7, -1.9], [1.7, 1.9], [2.65, 2.9]].forEach(([x, tx], i) => {
     const target = new THREE.Object3D(); target.position.set(tx, 3.2, 0); scene.add(target);
     const head = new THREE.Mesh(new THREE.CylinderGeometry(.13, .16, .5, 24), M.black);
     head.position.set(x, H - .38, 1.15); head.lookAt(target.position); head.rotateX(Math.PI/2); scene.add(head);
@@ -211,6 +275,7 @@ async function build() {
 
   /* ---- three tub chairs + round table ---- */
   const velvet = new THREE.MeshPhysicalMaterial({ color:0x202028, roughness:.92, sheen:1, sheenRoughness:.4, sheenColor:new THREE.Color(0x8a8a99), side:THREE.DoubleSide });
+  const seats = [];
   function chair(x, z, yaw) {
     // open-front tub chair: back wraps 234 degrees, the gap faces +z (forward)
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = yaw;
@@ -233,6 +298,7 @@ async function build() {
     });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(.7, .02, 8, 48), M.brass); ring.rotation.x = Math.PI/2; ring.position.y = 1.12; g.add(ring);
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } }); scene.add(g);
+    seats.push({ x, z, yaw });
   }
   chair(0, 1.75, 0);
   chair(-2.85, 4.05, Math.PI * .34);
@@ -253,6 +319,24 @@ async function build() {
     lf.rotation.set(Math.sin(a) * .5, 0, -Math.cos(a) * .5); scene.add(lf);
   }
 
+
+  /* ---- optional seated hosts, to check sightlines (head top ~4.4 ft) ---- */
+  const hostsG = new THREE.Group(); hostsG.name = 'hosts'; hostsG.visible = false; scene.add(hostsG);
+  const clay = std({ color:0x8e9096, roughness:.85 });
+  const cap = (r, len, x, y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 16), clay); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; return m; };
+  seats.forEach(({ x, z, yaw }) => {
+    const f = new THREE.Group(); f.position.set(x, 0, z); f.rotation.y = yaw;
+    f.add(cap(.42, .95, 0, 2.55, -.18));                          // torso
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.36, 24, 16), clay); head.position.set(0, 4.04, -.12); head.castShadow = true; f.add(head);
+    f.add(cap(.1, .12, 0, 3.6, -.14));                            // neck
+    [-.22, .22].forEach(dx => {
+      f.add(cap(.16, .95, dx, 1.72, .4, Math.PI/2));              // thigh
+      f.add(cap(.13, 1.2, dx, .9, 1.0));                          // shin
+      f.add(cap(.11, .9, dx * 2.3, 2.45, .15, .5));               // arm
+    });
+    hostsG.add(f);
+  });
+
   /* ---- room light ---- */
   scene.add(new THREE.HemisphereLight(0xfff0dc, 0x232833, .55));
   const fill = new THREE.DirectionalLight(0xffe6c8, .55); fill.position.set(2, 5, 12); scene.add(fill);
@@ -260,7 +344,7 @@ async function build() {
   rackLight.position.set(rackPos.x + 2.2, H - .2, rackPos.z + 2.4); rackLight.target = rack; scene.add(rackLight);
 
   /* ---- dimension guides ---- */
-  const dims = new THREE.Group(); dims.visible = false; scene.add(dims);
+  const dims = new THREE.Group(); dims.name = 'dims'; dims.visible = false; scene.add(dims);
   const lineM = new THREE.LineBasicMaterial({ color:GOLD });
   function label(text, pos) {
     const t = canvasTex(512, 128, (g, w, h) => { g.fillStyle = 'rgba(11,11,12,.82)'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e5b83d'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#f3ece3'; g.font = '600 52px "Red Hat Display", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w/2, h/2 + 2); });
@@ -277,8 +361,9 @@ async function build() {
   seg(new THREE.Vector3(4, 0, 0), endR, 'Brand KV 4 ft');
   seg(endL, endL.clone().addScaledVector(cL.dir, 4), 'Curtain 4 ft');
   seg(endR, endR.clone().add(new THREE.Vector3(Math.sin(CURTAIN_SPLAY) * 4, 0, Math.cos(CURTAIN_SPLAY) * 4)), 'Curtain 4 ft');
-  label('Lightbox Ø 38 in', new THREE.Vector3(0, LB_Y + R + .45, .4));
+  label('Lightbox Ø 29 in', new THREE.Vector3(0, LB_Y + R + .45, .4));
   label('Display rack 1.8 × 6 ft', new THREE.Vector3(rackPos.x, RH + .45, rackPos.z));
+  label('Tactical board 2 × 2.8 ft', new THREE.Vector3(easelPos.x, BY + BH + .5, easelPos.z));
 
   document.getElementById('load').remove();
   return { rackPos };
@@ -288,7 +373,7 @@ async function build() {
 const VIEWS = {
   front: { p:[-0.4, 4.6, 18.5], t:[-0.4, 2.9, 2.4] },
   left:  { p:[3.4, 4.1, 12.2], t:[-4.9, 3.0, 3.6] },
-  right: { p:[-3.2, 4.0, 9.8], t:[4.2, 3.1, 2.4] },
+  right: { p:[-3.4, 4.1, 12.2], t:[4.9, 3.0, 3.6] },
   host:  { p:[0.2, 2.9, 7.4], t:[0, 3.6, 0] },
   top:   { p:[0, 17, 6.2], t:[0, 0, 3.2] },
 };
@@ -305,9 +390,10 @@ document.getElementById('spin').addEventListener('click', e => { controls.autoRo
 function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(stage); resize();
 
-let dimsGroup = null;
+let dimsGroup = null, hostsGroup = null;
 build().then(() => {
-  dimsGroup = scene.children.find(o => o.isGroup && o.visible === false);
+  dimsGroup = scene.getObjectByName('dims'); hostsGroup = scene.getObjectByName('hosts');
+  document.getElementById('hosts').addEventListener('click', e => { hostsGroup.visible = !hostsGroup.visible; e.currentTarget.setAttribute('aria-pressed', hostsGroup.visible); });
   document.getElementById('dims').addEventListener('click', e => { dimsGroup.visible = !dimsGroup.visible; e.currentTarget.setAttribute('aria-pressed', dimsGroup.visible); });
   window.__ready = true;
 }).catch(err => { document.getElementById('load').textContent = 'Could not load the set artwork'; console.error(err); });
