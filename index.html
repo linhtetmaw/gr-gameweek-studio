@@ -21,6 +21,10 @@
   .bar button { font:500 13px/1 "Red Hat Display", system-ui, sans-serif; color:var(--ink); background:rgba(20,20,24,.78); border:1px solid rgba(229,184,61,.45); padding:9px 13px; border-radius:2px; cursor:pointer; backdrop-filter:blur(6px); }
   .bar button[aria-pressed="true"] { background:var(--rg); color:var(--rb); border-color:var(--rg); }
   .bar button:focus-visible { outline:2px solid var(--rg); outline-offset:2px; }
+  .sets { position:absolute; left:16px; top:76px; display:flex; gap:6px; }
+  .sets button { font:600 13px/1 "Red Hat Display", system-ui, sans-serif; color:var(--ink); background:rgba(20,20,24,.78); border:1px solid rgba(229,184,61,.45); padding:9px 13px; border-radius:2px; cursor:pointer; }
+  .sets button[aria-pressed="true"] { background:var(--rg); color:var(--rb); border-color:var(--rg); }
+  .sets button:focus-visible { outline:2px solid var(--rg); outline-offset:2px; }
   .hint { position:absolute; right:16px; top:16px; font-size:12px; color:rgba(243,236,227,.6); pointer-events:none; }
   #load { position:absolute; inset:0; display:grid; place-items:center; color:var(--rg); font-size:13px; letter-spacing:.2em; text-transform:uppercase; }
 </style>
@@ -34,8 +38,12 @@
 <body>
 <div id="stage">
   <div id="load">Building the set…</div>
-  <div class="hud"><h1>Grand Royal Gameweek</h1><p>Studio set · final</p></div>
+  <div class="hud"><h1>Grand Royal Gameweek</h1><p id="setname">Studio set · Option A · Classic</p></div>
   <div class="hint">Drag to orbit · scroll to zoom</div>
+  <div class="sets" role="group" aria-label="Set option">
+    <button data-set="classic" aria-pressed="true">A · Classic</button>
+    <button data-set="lounge" aria-pressed="false">B · Lounge</button>
+  </div>
   <div class="bar" role="toolbar" aria-label="Camera views">
     <button data-view="front" aria-pressed="true">Front</button>
     <button data-view="left">Left · KV &amp; rack</button>
@@ -50,6 +58,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ---- sources: the design system's own files ---- */
 const TEX = {"kvWall": "assets/master-kv-wall.jpg", "rack": "assets/display-rack.jpg", "logo": "assets/gameweek-logo.png"};
@@ -273,7 +282,8 @@ async function build() {
     scene.add(s);
   });
 
-  /* ---- three tub chairs + round table ---- */
+  /* ======== OPTION A · CLASSIC: tub chairs + round table ======== */
+  const _beforeClassic = new Set(scene.children);
   const velvet = new THREE.MeshPhysicalMaterial({ color:0x202028, roughness:.92, sheen:1, sheenRoughness:.4, sheenColor:new THREE.Color(0x8a8a99), side:THREE.DoubleSide });
   const seats = [];
   function chair(x, z, yaw) {
@@ -281,7 +291,7 @@ async function build() {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = yaw;
     const T0 = Math.PI * .35, TL = Math.PI * 1.3;
     const seat = new THREE.Mesh(new THREE.CylinderGeometry(.92, .86, .36, 48), velvet); seat.position.y = 1.36; g.add(seat);
-    const cushion = new THREE.Mesh(new THREE.SphereGeometry(.9, 48, 12, 0, Math.PI*2, 0, Math.PI*.12), velvet); cushion.position.y = 1.12; g.add(cushion);
+    const cushion = new THREE.Mesh(new THREE.SphereGeometry(.9, 48, 12, 0, Math.PI*2, 0, Math.PI*.12), velvet); cushion.position.y = .7; g.add(cushion);
     const backM = new THREE.Mesh(new THREE.CylinderGeometry(.98, .9, 1.05, 72, 6, true, T0, TL), velvet); backM.position.y = 1.98; g.add(backM);
     const inner = new THREE.Mesh(new THREE.CylinderGeometry(.84, .8, 1.0, 72, 6, true, T0, TL), velvet); inner.position.y = 1.98; g.add(inner);
     const roll = new THREE.Mesh(new THREE.TorusGeometry(.91, .085, 14, 72, TL), velvet);
@@ -320,22 +330,104 @@ async function build() {
   }
 
 
-  /* ---- optional seated hosts, to check sightlines (head top ~4.4 ft) ---- */
-  const hostsG = new THREE.Group(); hostsG.name = 'hosts'; hostsG.visible = false; scene.add(hostsG);
+  const classicG = new THREE.Group(); classicG.name = 'classic';
+  scene.children.filter(o => !_beforeClassic.has(o)).forEach(o => classicG.add(o)); scene.add(classicG);
+
+  /* ---- optional seated hosts, to check sightlines ---- */
+  const hostsG = new THREE.Group(); hostsG.name = 'hosts-classic'; hostsG.visible = false; scene.add(hostsG);
   const clay = std({ color:0x8e9096, roughness:.85 });
   const cap = (r, len, x, y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 16), clay); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; return m; };
-  seats.forEach(({ x, z, yaw }) => {
-    const f = new THREE.Group(); f.position.set(x, 0, z); f.rotation.y = yaw;
-    f.add(cap(.42, .95, 0, 2.55, -.18));                          // torso
-    const head = new THREE.Mesh(new THREE.SphereGeometry(.36, 24, 16), clay); head.position.set(0, 4.04, -.12); head.castShadow = true; f.add(head);
-    f.add(cap(.1, .12, 0, 3.6, -.14));                            // neck
+  function figure({ x, z, yaw, dy = 0, lean = 0 }, into) {
+    const f = new THREE.Group(); f.position.set(x, dy, z); f.rotation.y = yaw;
+    const up = new THREE.Group(); up.position.set(0, 1.6, 0); up.rotation.x = -lean; f.add(up);   // upper body pivots at the hips
+    up.add(cap(.42, .95, 0, .95, -.18));                           // torso
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.36, 24, 16), clay); head.position.set(0, 2.44, -.12); head.castShadow = true; up.add(head);
+    up.add(cap(.1, .12, 0, 2.0, -.14));                            // neck
     [-.22, .22].forEach(dx => {
       f.add(cap(.16, .95, dx, 1.72, .4, Math.PI/2));              // thigh
       f.add(cap(.13, 1.2, dx, .9, 1.0));                          // shin
-      f.add(cap(.11, .9, dx * 2.3, 2.45, .15, .5));               // arm
+      up.add(cap(.11, .9, dx * 2.3, .85, .15, .5));               // arm
     });
-    hostsG.add(f);
-  });
+    into.add(f);
+  }
+  seats.forEach(st => figure(st, hostsG));
+
+
+  /* ======== OPTION B · LOUNGE: young, relaxed ======== */
+  const loungeG = new THREE.Group(); loungeG.name = 'lounge'; loungeG.visible = false; scene.add(loungeG);
+  const noise = canvasTex(256, 256, (g, w, h) => { const d = g.createImageData(w, h); for (let i = 0; i < d.data.length; i += 4) { const v = 110 + Math.random() * 145; d.data[i] = d.data[i+1] = d.data[i+2] = v; d.data[i+3] = 255; } g.putImageData(d, 0, 0); });
+  noise.colorSpace = THREE.NoColorSpace; noise.wrapS = noise.wrapT = THREE.RepeatWrapping; noise.repeat.set(5, 5);
+  const boucle = new THREE.MeshPhysicalMaterial({ color:0xece3d3, roughness:1, sheen:.8, sheenColor:new THREE.Color(0xffffff), bumpMap:noise, bumpScale:2.2 });
+  const knit = (c) => new THREE.MeshPhysicalMaterial({ color:c, roughness:1, sheen:.6, sheenColor:new THREE.Color(0xffffff), bumpMap:noise, bumpScale:1.6 });
+  const rb = (w, h, d, r, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 5, r), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = m.receiveShadow = true; loungeG.add(m); return m; };
+
+  // round rug, navy with gold rings
+  const rugTex = canvasTex(1024, 1024, (g, w) => { g.fillStyle = '#1f295c'; g.beginPath(); g.arc(w/2, w/2, w/2, 0, Math.PI*2); g.fill();
+    g.strokeStyle = '#e5b83d'; g.lineWidth = 26; g.beginPath(); g.arc(w/2, w/2, w/2 - 60, 0, Math.PI*2); g.stroke();
+    g.lineWidth = 8; g.beginPath(); g.arc(w/2, w/2, w/2 - 110, 0, Math.PI*2); g.stroke();
+    g.strokeStyle = 'rgba(236,205,123,.35)'; g.lineWidth = 4; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.beginPath(); g.moveTo(w/2 + Math.cos(a) * 140, w/2 + Math.sin(a) * 140); g.lineTo(w/2 + Math.cos(a) * 360, w/2 + Math.sin(a) * 360); g.stroke(); } });
+  const rug = new THREE.Mesh(new THREE.CircleGeometry(3.7, 96), std({ map:rugTex, roughness:1, transparent:true }));
+  rug.rotation.x = -Math.PI/2; rug.position.set(0, .012, 3.6); rug.receiveShadow = true; loungeG.add(rug);
+
+  // deep three-seat bouclé sofa, 7.6 ft
+  const SZ = 2.05;                                  // sofa centre (back ~0.5 ft off the slats)
+  rb(7.6, .62, 3.1, .18, boucle, 0, .5, SZ);                                   // base
+  [-2.35, 0, 2.35].forEach(x => rb(2.32, .5, 2.45, .22, boucle, x, 1.04, SZ + .28));          // seat cushions
+  [-2.35, 0, 2.35].forEach(x => rb(2.3, 1.35, .75, .3, boucle, x, 1.72, SZ - 1.0, -.16));     // back cushions
+  [-1, 1].forEach(sd => rb(.78, 1.4, 3.1, .34, boucle, sd * 3.42, .92, SZ));                 // arms
+  [[-3.5, -1.3], [3.5, -1.3], [-3.5, 1.3], [3.5, 1.3]].forEach(([x, z]) => { const l = new THREE.Mesh(new THREE.CylinderGeometry(.05, .04, .2, 10), M.black); l.position.set(x, .1, SZ + z); loungeG.add(l); });
+  // throw pillows in the brand colours + a football pillow
+  const ballTex = canvasTex(512, 512, (g, w) => { g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, w, w); g.fillStyle = '#18181b';
+    const pent = (cx, cy, r) => { g.beginPath(); for (let i = 0; i < 5; i++) { const a = -Math.PI/2 + i * Math.PI * 2 / 5; g.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); } g.closePath(); g.fill(); };
+    [[256, 256, 70], [80, 110, 50], [432, 110, 50], [80, 410, 50], [432, 410, 50], [256, 40, 40], [256, 480, 40]].forEach(p => pent(...p)); });
+  const pil = [[-3.05, 0x1f295c, .32], [-2.15, 0xe5b83d, -.18], [2.2, 0x8b1f37, .22], [3.0, null, -.28]];
+  pil.forEach(([x, c, rz]) => rb(1.15, 1.15, .36, .16, c ? knit(c) : std({ map:ballTex, roughness:.9 }), x, 1.95, SZ - .55, -.32, 0, rz));
+  // gold knit throw over the left arm
+  rb(.84, .09, 1.7, .045, knit(0xc8962e), -3.42, 1.64, SZ + .2);
+  rb(.09, .95, 1.7, .045, knit(0xc8962e), -3.83, 1.2, SZ + .2);
+
+  // low round oak coffee table on a fat drum base
+  const oak = std({ color:0xc59a6a, roughness:.5 });
+  const ct = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.45, .14, 64), oak); ct.position.set(0, 1.02, 4.75); ct.castShadow = ct.receiveShadow = true; loungeG.add(ct);
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(.95, 1.05, .95, 48), std({ color:0xf1ece2, roughness:.7 })); drum.position.set(0, .48, 4.75); drum.castShadow = true; loungeG.add(drum);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(.36, 48, 32), std({ map:ballTex, roughness:.45 })); ball.position.set(-.55, 1.45, 4.55); ball.rotation.set(.4, .8, 0); ball.castShadow = true; loungeG.add(ball);
+  [[.45, 4.35, 0x1f295c], [.75, 4.95, 0xf4f2ec]].forEach(([x, z, c]) => { const mug = new THREE.Mesh(new THREE.CylinderGeometry(.13, .12, .3, 24), std({ color:c, roughness:.4 })); mug.position.set(x, 1.24, z); mug.castShadow = true; loungeG.add(mug); });
+  rb(.62, .1, .36, .05, std({ color:0x141416, roughness:.5 }), .05, 1.14, 5.25, 0, .4, 0);          // game controller
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(.34, 32, 12, 0, Math.PI*2, Math.PI/2, Math.PI/2), std({ color:0x8b1f37, roughness:.5, side:THREE.DoubleSide })); bowl.position.set(-.1, 1.43, 5.1); loungeG.add(bowl);
+  for (let i = 0; i < 26; i++) { const k = new THREE.Mesh(new THREE.SphereGeometry(.05, 8, 6), std({ color:0xfbecc0, roughness:.9 })); const a = Math.random() * Math.PI * 2, r = Math.random() * .26; k.position.set(-.1 + Math.cos(a) * r, 1.42 + Math.random() * .08, 5.1 + Math.sin(a) * r); loungeG.add(k); }
+
+  // floor seating: gold knit pouf (left) and a navy bean bag (right)
+  const pouf = new THREE.Mesh(new THREE.CylinderGeometry(.85, .9, .95, 48), knit(0xe0ad3c)); pouf.position.set(-3.0, .48, 5.15); pouf.castShadow = true; loungeG.add(pouf);
+  const ptop = new THREE.Mesh(new THREE.SphereGeometry(.85, 48, 12, 0, Math.PI*2, 0, Math.PI*.18), knit(0xe0ad3c)); ptop.position.set(-3.0, .234, 5.15); loungeG.add(ptop);
+  const bbGeo = new THREE.SphereGeometry(1, 64, 32), bp = bbGeo.attributes.position;
+  for (let i = 0; i < bp.count; i++) { const y = bp.getY(i); const sq = y > 0 ? .55 + .2 * (1 - y) : .7; bp.setY(i, y * sq); if (y > .3 && bp.getZ(i) > 0) bp.setY(i, bp.getY(i) - .25 * y); }
+  bbGeo.computeVertexNormals();
+  const bean = new THREE.Mesh(bbGeo, std({ color:0x26306a, roughness:.55, metalness:.05 })); bean.scale.set(1.15, 1, 1.15); bean.position.set(3.05, .62, 5.2); bean.rotation.y = -.6; bean.castShadow = true; loungeG.add(bean);
+
+  // brass arc floor lamp from the right, warm pool over the table
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.42, .46, .12, 32), M.brass); lampBase.position.set(4.4, .06, 6.0); loungeG.add(lampBase);
+  const arc = new THREE.CatmullRomCurve3([new THREE.Vector3(4.4, .1, 6.0), new THREE.Vector3(4.45, 3.4, 5.9), new THREE.Vector3(3.8, 5.3, 5.5), new THREE.Vector3(2.5, 5.3, 5.3), new THREE.Vector3(1.6, 4.5, 5.2)]);
+  const arcM = new THREE.Mesh(new THREE.TubeGeometry(arc, 80, .04, 10), M.brass); arcM.castShadow = true; loungeG.add(arcM);
+  const shade = new THREE.Mesh(new THREE.SphereGeometry(.55, 40, 16, 0, Math.PI*2, 0, Math.PI*.5), std({ color:0xc9a24a, metalness:.9, roughness:.3, side:THREE.DoubleSide })); shade.position.set(1.6, 4.47, 5.2); loungeG.add(shade);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.16, 16, 12), new THREE.MeshBasicMaterial({ color:0xfff1cf })); bulb.position.set(1.6, 4.25, 5.2); loungeG.add(bulb);
+  const lampL = new THREE.PointLight(0xffc98a, 14, 9, 1.6); lampL.position.set(1.6, 4.05, 5.2); lampL.castShadow = true; lampL.shadow.mapSize.set(512, 512); loungeG.add(lampL);
+
+  // big leafy plant at the left end of the sofa
+  const potL = new THREE.Mesh(new THREE.CylinderGeometry(.45, .36, .95, 32), std({ color:0xe9e3d8, roughness:.6 })); potL.position.set(-4.3, .48, 1.75); loungeG.add(potL);
+  for (let i = 0; i < 14; i++) {
+    const a = i * 2.4, h = 2.0 + (i % 5) * .55, r = .35 + (i % 3) * .3;
+    const tip = new THREE.Vector3(-4.3 + Math.cos(a) * r, h, 1.75 + Math.sin(a) * r);
+    rod(new THREE.Vector3(-4.3, .95, 1.75), tip, .018, std({ color:0x3f5f35 }), loungeG);
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(.42, 16, 10), M.leaf); leaf.scale.set(1, .18, .62); leaf.position.copy(tip); leaf.rotation.set(.5 * Math.sin(a), a, .4 * Math.cos(a)); leaf.castShadow = true; loungeG.add(leaf);
+  }
+
+  // warm LED strip along the foot of the backdrop
+  const led = new THREE.Mesh(new THREE.BoxGeometry(7.9, .05, .05), new THREE.MeshBasicMaterial({ color:0xffc864 })); led.position.set(0, .07, .14); loungeG.add(led);
+  [-2.6, 0, 2.6].forEach(x => { const p = new THREE.PointLight(0xffb84d, 4, 3.2, 1.8); p.position.set(x, .2, .35); loungeG.add(p); });
+
+  // seated hosts on the sofa, relaxed
+  const hostsL = new THREE.Group(); hostsL.name = 'hosts-lounge'; hostsL.visible = false; scene.add(hostsL);
+  [-2.35, 0, 2.35].forEach(x => figure({ x, z: SZ + .05, yaw: 0, dy: -.26, lean: .14 }, hostsL));
 
   /* ---- room light ---- */
   scene.add(new THREE.HemisphereLight(0xfff0dc, 0x232833, .55));
@@ -390,10 +482,19 @@ document.getElementById('spin').addEventListener('click', e => { controls.autoRo
 function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(stage); resize();
 
-let dimsGroup = null, hostsGroup = null;
+let dimsGroup = null, hostsOn = false, SET = (new URLSearchParams(location.search).get('set') === 'lounge') ? 'lounge' : 'classic';
+function applySet() {
+  const L = SET === 'lounge';
+  scene.getObjectByName('classic').visible = !L; scene.getObjectByName('lounge').visible = L;
+  scene.getObjectByName('hosts-classic').visible = hostsOn && !L; scene.getObjectByName('hosts-lounge').visible = hostsOn && L;
+  document.querySelectorAll('[data-set]').forEach(b => b.setAttribute('aria-pressed', b.dataset.set === SET));
+  document.getElementById('setname').textContent = L ? 'Studio set · Option B · Lounge' : 'Studio set · Option A · Classic';
+}
 build().then(() => {
-  dimsGroup = scene.getObjectByName('dims'); hostsGroup = scene.getObjectByName('hosts');
-  document.getElementById('hosts').addEventListener('click', e => { hostsGroup.visible = !hostsGroup.visible; e.currentTarget.setAttribute('aria-pressed', hostsGroup.visible); });
+  dimsGroup = scene.getObjectByName('dims');
+  document.getElementById('hosts').addEventListener('click', e => { hostsOn = !hostsOn; e.currentTarget.setAttribute('aria-pressed', hostsOn); applySet(); });
+  document.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => { SET = b.dataset.set; applySet(); }));
+  applySet();
   document.getElementById('dims').addEventListener('click', e => { dimsGroup.visible = !dimsGroup.visible; e.currentTarget.setAttribute('aria-pressed', dimsGroup.visible); });
   window.__ready = true;
 }).catch(err => { document.getElementById('load').textContent = 'Could not load the set artwork'; console.error(err); });
