@@ -45,6 +45,7 @@
     <button data-opt="A2" aria-pressed="false">A-2 · Classic · 8 ft KV</button>
     <button data-opt="B1" aria-pressed="false">B-1 · Lounge · 4 ft KV</button>
     <button data-opt="B2" aria-pressed="false">B-2 · Lounge · 8 ft KV</button>
+    <button data-opt="C" aria-pressed="false">C · Lounge · players crown</button>
   </div>
   <div class="bar" role="toolbar" aria-label="Camera views">
     <button data-view="front" aria-pressed="true">Front</button>
@@ -63,7 +64,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ---- sources: the design system's own files ---- */
-const TEX = {"kvWall": "assets/master-kv-wall.jpg", "kvWall8": "assets/master-kv-wall-8ft.jpg", "logo": "assets/game-on-logo.png"};
+const TEX = {"kvWall": "assets/master-kv-wall.jpg", "kvWall8": "assets/master-kv-wall-8ft.jpg", "logo": "assets/game-on-logo.png", "kvWallNP": "assets/master-kv-wall-no-players.jpg", "players": "assets/players-crown.png"};
 
 /* ---- set dimensions, in feet (backdrop 8 ft, side walls 4 ft, curtains 4 ft) ---- */
 const H = 6.5;                 // wall height, estimated from the photo
@@ -118,7 +119,7 @@ function canvasTex(w, h, draw) {
 
 async function build() {
   await Promise.all([document.fonts.load('700 120px "Red Hat Display"'), document.fonts.load('500 40px "Red Hat Display"')]).catch(()=>{});
-  const [kvWall, kvWall8, logoTex] = await Promise.all([loadTex(TEX.kvWall), loadTex(TEX.kvWall8), loadTex(TEX.logo)]);
+  const [kvWall, kvWall8, logoTex, kvWallNP, playersTex] = await Promise.all([loadTex(TEX.kvWall), loadTex(TEX.kvWall8), loadTex(TEX.logo), loadTex(TEX.kvWallNP), loadTex(TEX.players)]);
 
   /* floor + ceiling */
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(18, 14), M.carpet);
@@ -151,6 +152,14 @@ async function build() {
   signG.add(face);
   [[-.55, .7], [.55, .7], [-.6, -.7], [.6, -.7]].forEach(([x, y]) => { const st = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, .2, 12), M.brass); st.rotation.x = Math.PI/2; st.position.set(x * SW / 1.4, y * SH / 1.6, -.1); signG.add(st); });
   const signLight = new THREE.PointLight(0xffc35a, 7, 6, 1.6); signLight.position.set(0, SY - .2, 1.0); scene.add(signLight);
+
+  /* ---- option C: die-cut "crown with players" panel on the backdrop, just under the sign ---- */
+  const playersG = new THREE.Group(); playersG.name = 'playersC'; playersG.visible = false; scene.add(playersG);
+  const PW = 7.0, PH = PW * 678 / 1548, PTOP = SY - SH/2 + .22;     // ~7 ft wide; crown tips tuck behind the sign
+  const pPlate = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map:playersTex, color:0x000000, transparent:true, opacity:.55, alphaTest:.5, depthWrite:false }));
+  pPlate.position.set(.05, PTOP - PH/2 - .06, .1); playersG.add(pPlate);                                // soft drop shadow on the slats
+  const pFace = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), std({ map:playersTex, roughness:.55, transparent:true, alphaTest:.5 }));
+  pFace.position.set(0, PTOP - PH/2, .14); playersG.add(pFace);
 
   /* ---- side walls: layout 1 = 4 ft KV + 4 ft curtain each side; layout 2 = 8 ft KV each side ---- */
   const placeholder = (ft) => canvasTex(ft === 8 ? 2400 : 1200, 1950, (g, w, h) => {
@@ -190,6 +199,10 @@ async function build() {
   curtain(endL, -1, walls4); curtain(endR, +1, walls4);
   const walls8 = new THREE.Group(); walls8.name = 'walls8'; walls8.visible = false; scene.add(walls8);
   sideWall(-1, kvWall8, 8, walls8); sideWall(+1, brand8, 8, walls8);         // 8 ft master KV | 8 ft Brand KV
+  const yellow = canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#f3b137'; g.fillRect(0, 0, w, h); });   // plain KV yellow
+  const wallsC = new THREE.Group(); wallsC.name = 'wallsC'; wallsC.visible = false; scene.add(wallsC);
+  sideWall(-1, yellow, 4, wallsC); sideWall(+1, kvWallNP, 4, wallsC);        // plain yellow (shelf wall) | master KV without players
+  curtain(endL, -1, wallsC); curtain(endR, +1, wallsC);
 
   /* helper: a rod between two points */
   function rod(a, b, r, mat, parent) {
@@ -280,8 +293,8 @@ async function build() {
     royal:   { glass:0x1c2a66, label:labelTex('#1f295c', '#e5b83d', 'ROYAL'), cap:0xc9a24a },
     special: { glass:0xa8641c, label:labelTex('#efe6d2', '#1f295c', 'SPECIAL RESERVE'), cap:0x7a1f2b },
   };
-  function bottle(kind, x, y, z) {
-    const b = BOTTLES[kind], g = new THREE.Group(); g.position.set(x, y, z); shelfG.add(g);
+  function bottle(kind, x, y, z, parent) {
+    const b = BOTTLES[kind], g = new THREE.Group(); g.position.set(x, y, z); parent.add(g);
     const glass = new THREE.MeshPhysicalMaterial({ color:b.glass, roughness:.08, clearcoat:1, clearcoatRoughness:.05 });
     const body = new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, .6, 32), glass); body.position.y = .3; g.add(body);
     const sh = new THREE.Mesh(new THREE.SphereGeometry(.13, 32, 12, 0, Math.PI*2, 0, Math.PI/2), glass); sh.scale.y = .7; sh.position.y = .6; g.add(sh);
@@ -294,14 +307,17 @@ async function build() {
   // two freestanding shelf units (étagères) either side of the backdrop: black metal frame, oak boards
   const frameK = std({ color:0x141416, metalness:.75, roughness:.35 });
   const SWd = 1.9, SD = 1.05, SHt = 5.4, BOARDS = [.28, 1.5, 2.72, 3.94, 5.16];
-  [-1, 1].forEach(sd => {
-    const cx = 2.98 * sd, cz = .72;
+  const shelfStd = new THREE.Group(); shelfStd.name = 'shelvesStd'; shelfG.add(shelfStd);
+  const shelfC = new THREE.Group(); shelfC.name = 'shelvesC'; shelfC.visible = false; shelfG.add(shelfC);
+  function shelfUnit(sd, parent, x, z, ry) {          // built round its own centre, front = +z
+    const u = new THREE.Group(); u.position.set(x, 0, z); u.rotation.y = ry; parent.add(u);
+    const shelfG = u, cx = 0, cz = 0;
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([ix, iz]) => { const p = new THREE.Mesh(new THREE.BoxGeometry(.06, SHt, .06), frameK); p.position.set(cx + ix * (SWd/2 - .03), SHt/2, cz + iz * (SD/2 - .03)); p.castShadow = true; shelfG.add(p); });
     BOARDS.forEach(y => { const b = new THREE.Mesh(new THREE.BoxGeometry(SWd - .02, .07, SD - .02), shelfOak); b.position.set(cx, y, cz); b.castShadow = b.receiveShadow = true; shelfG.add(b);
       const lip = new THREE.Mesh(new THREE.BoxGeometry(SWd, .05, .04), frameK); lip.position.set(cx, y - .05, cz + SD/2 - .02); shelfG.add(lip); });
     [1.5, 2.72, 3.94].forEach((y, row) => {
       const kinds = [['black', 'smooth', 'royal'], ['special', 'black', 'smooth'], ['royal', 'special', 'black']][row];
-      kinds.forEach((k, i) => bottle(k, cx + (-.55 + i * .55), y + .035, cz + .05));
+      kinds.forEach((k, i) => bottle(k, cx + (-.55 + i * .55), y + .035, cz + .05, u));
       const t = new THREE.Mesh(new THREE.CylinderGeometry(.09, .08, .2, 24, 1, true), tumblerM); t.position.set(cx - .8 * sd, y + .135, cz + .25); shelfG.add(t);
       const strip = new THREE.Mesh(new THREE.BoxGeometry(SWd - .1, .02, .02), new THREE.MeshBasicMaterial({ color:0xffd27a })); strip.position.set(cx, y + 1.13, cz + SD/2 - .08); shelfG.add(strip);
       const pl = new THREE.PointLight(0xffc870, 1.8, 2.0, 1.8); pl.position.set(cx, y + .9, cz + .3); shelfG.add(pl);
@@ -311,7 +327,14 @@ async function build() {
     const ribbon = new THREE.Mesh(new THREE.BoxGeometry(.08, .56, .51), std({ color:0x1f295c, roughness:.5 })); ribbon.position.copy(gift.position); shelfG.add(ribbon);
     const fb = new THREE.Mesh(new THREE.SphereGeometry(.3, 32, 20), std({ color:0xf4f2ec, roughness:.5 })); fb.position.set(cx + .45 * sd, .28 + .33, cz); fb.castShadow = true; shelfG.add(fb);
     const topBox = new THREE.Mesh(new THREE.BoxGeometry(.55, .3, .4), std({ color:0x1f295c, roughness:.45 })); topBox.position.set(cx, 5.16 + .19, cz); shelfG.add(topBox);
-  });
+  }
+  [-1, 1].forEach(sd => shelfUnit(sd, shelfStd, 2.98 * sd, .72, 0));
+  // option C: one unit only, standing against the plain yellow 4 ft wall and facing into the set
+  const wallRot = Math.PI/2 - SPLAY, wallN = new THREE.Vector3(Math.cos(SPLAY), 0, Math.sin(SPLAY));
+  const cL = new THREE.Vector3(-4, 0, 0).addScaledVector(dirOf(-1), 1.05).addScaledVector(wallN, SD/2 + .06);   // back half of the wall, clear of the sofa
+  shelfUnit(-1, shelfC, cL.x, cL.z, wallRot);
+  const shelfSpot = new THREE.SpotLight(0xffe0b0, 40, 12, .42, .7, 1.4); shelfSpot.position.set(-1.2, H - .45, 4.2);
+  const shelfSpotT = new THREE.Object3D(); shelfSpotT.position.set(cL.x, 3.0, cL.z); shelfC.add(shelfSpotT); shelfSpot.target = shelfSpotT; shelfC.add(shelfSpot);
 
   /* ======== OPTION A · CLASSIC: tub chairs + round table ======== */
   const _beforeClassic = new Set(scene.children);
@@ -496,13 +519,18 @@ async function build() {
     into.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), lineM));
     label(text, a.clone().lerp(b, .5).add(new THREE.Vector3(0, .5, 0)), into);
   }
-  const d4 = new THREE.Group(); d4.name = 'dims4'; const d8 = new THREE.Group(); d8.name = 'dims8'; dims.add(d4, d8);
+  const d4 = new THREE.Group(); d4.name = 'dims4'; const d8 = new THREE.Group(); d8.name = 'dims8'; const dC = new THREE.Group(); dC.name = 'dimsC'; dims.add(d4, d8, dC);
   seg(new THREE.Vector3(-4, 0, .25), new THREE.Vector3(4, 0, .25), 'Backdrop 8 ft');
   const L0 = new THREE.Vector3(-4, 0, 0), R0 = new THREE.Vector3(4, 0, 0);
   seg(L0, endL, 'Master KV 4 ft', d4); seg(R0, endR, 'Master KV 4 ft', d4);
   seg(endL, endL.clone().addScaledVector(dirOf(-1), 4), 'Curtain 4 ft', d4); seg(endR, endR.clone().addScaledVector(dirOf(1), 4), 'Curtain 4 ft', d4);
   seg(L0, L0.clone().addScaledVector(dirOf(-1), 8), 'Master KV 8 ft', d8); seg(R0, R0.clone().addScaledVector(dirOf(1), 8), 'Brand KV 8 ft', d8);
-  label('Stand shelf 1.9 × 5.4 ft', new THREE.Vector3(-2.98, 5.95, .9));
+  seg(L0, endL, 'Yellow wall 4 ft', dC); seg(R0, endR, 'Master KV 4 ft', dC);
+  seg(endL, endL.clone().addScaledVector(dirOf(-1), 4), 'Curtain 4 ft', dC); seg(endR, endR.clone().addScaledVector(dirOf(1), 4), 'Curtain 4 ft', dC);
+  const dS = new THREE.Group(); dS.name = 'dimsShelf'; dims.add(dS);
+  label('Stand shelf 1.9 × 5.4 ft', new THREE.Vector3(-2.98, 5.95, .9), dS);
+  label('Stand shelf 1.9 × 5.4 ft', new THREE.Vector3(cL.x + .3, 5.95, cL.z), dC);
+  label('Players crown 7 × 3 ft', new THREE.Vector3(0, PTOP - PH - .35, .6), dC);
   label('Lightbox 26 in', new THREE.Vector3(0, SY + SH/2 + .35, .5));
   label('Tactical board 2 × 2.8 ft', new THREE.Vector3(easelPos.x, BY + BH + .5, easelPos.z));
 
@@ -530,18 +558,20 @@ document.getElementById('spin').addEventListener('click', e => { controls.autoRo
 function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(stage); resize();
 
-const OPTS = { A1:'Classic · 4 ft master KV both sides', A2:'Classic · 8 ft master KV + 8 ft Brand KV', B1:'Lounge · 4 ft master KV both sides', B2:'Lounge · 8 ft master KV + 8 ft Brand KV' };
+const OPTS = { A1:'Classic · 4 ft master KV both sides', A2:'Classic · 8 ft master KV + 8 ft Brand KV', B1:'Lounge · 4 ft master KV both sides', B2:'Lounge · 8 ft master KV + 8 ft Brand KV', C:'Lounge · yellow shelf wall + players crown' };
 const qs = new URLSearchParams(location.search);
 let dimsGroup = null, hostsOn = false, OPT = (qs.get('opt') || '').toUpperCase();
 if (!OPTS[OPT]) OPT = qs.get('set') === 'lounge' ? 'B1' : 'A1';
 function applySet() {
-  const L = OPT[0] === 'B', W8 = OPT[1] === '2';
+  const C = OPT === 'C', L = OPT[0] === 'B' || C, W8 = OPT[1] === '2';
   scene.getObjectByName('classic').visible = !L; scene.getObjectByName('lounge').visible = L;
   scene.getObjectByName('hosts-classic').visible = hostsOn && !L; scene.getObjectByName('hosts-lounge').visible = hostsOn && L;
-  scene.getObjectByName('walls4').visible = !W8; scene.getObjectByName('walls8').visible = W8;
-  scene.getObjectByName('dims4').visible = !W8; scene.getObjectByName('dims8').visible = W8;
+  scene.getObjectByName('walls4').visible = !W8 && !C; scene.getObjectByName('walls8').visible = W8; scene.getObjectByName('wallsC').visible = C;
+  scene.getObjectByName('dims4').visible = !W8 && !C; scene.getObjectByName('dims8').visible = W8; scene.getObjectByName('dimsC').visible = C;
+  scene.getObjectByName('dimsShelf').visible = !C; scene.getObjectByName('shelvesStd').visible = !C; scene.getObjectByName('shelvesC').visible = C;
+  scene.getObjectByName('playersC').visible = C;
   document.querySelectorAll('[data-opt]').forEach(b => b.setAttribute('aria-pressed', b.dataset.opt === OPT));
-  document.getElementById('setname').textContent = 'Option ' + OPT[0] + '-' + OPT[1] + ' · ' + OPTS[OPT];
+  document.getElementById('setname').textContent = 'Option ' + (C ? 'C' : OPT[0] + '-' + OPT[1]) + ' · ' + OPTS[OPT];
 }
 build().then(() => {
   dimsGroup = scene.getObjectByName('dims');
