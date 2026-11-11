@@ -69,7 +69,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const TEX = {"kvWall": "assets/master-kv-wall.jpg", "kvWall8": "assets/master-kv-wall-8ft.jpg", "logo": "assets/game-on-logo.png", "kvWallNP": "assets/master-kv-wall-no-players.jpg", "players": "assets/players-crown.png", "card": "assets/player-card.jpg", "pillow": "assets/smooth-pillow.png"};
 
 /* ---- set dimensions, in feet (backdrop 8 ft, side walls 4 ft, curtains 4 ft) ---- */
-const H = 6.5;                 // wall height, estimated from the photo
+const H = 7;                   // wall, backdrop and curtain height: 7 ft (confirmed)
 const SPLAY = THREE.MathUtils.degToRad(10);   // side walls open slightly toward camera
 const CURTAIN_SPLAY = SPLAY;   // curtains run on at ~100° from the backdrop, just past square
 const GOLD = 0xe5b83d, BLUE = 0x1f295c;
@@ -143,7 +143,7 @@ async function build() {
 
 
   /* ---- programme lightbox: die-cut backlit "GAME ON" sign, ~26 in tall, its text above seated head height ---- */
-  const SH = 2.2, SW = SH * 0.942, SY = 5.2;        // height, width (badge aspect), centre height
+  const SH = 1.5, SW = SH * 0.951, SY = 5.75;       // final programme logo fits a 1.5 x 1.5 ft box (1.5 ft tall, 1.43 ft wide); spans 5 ft - 6 ft 6 in
   const signG = new THREE.Group(); signG.name = 'sign'; signG.position.set(0, SY, .2); scene.add(signG);
   const glowTex = canvasTex(512, 512, (g, w) => { const gr = g.createRadialGradient(w/2, w/2, w*.18, w/2, w/2, w/2); gr.addColorStop(0, 'rgba(255,205,110,.9)'); gr.addColorStop(.45, 'rgba(255,175,70,.35)'); gr.addColorStop(1, 'rgba(255,150,40,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, w); });
   const halo = new THREE.Mesh(new THREE.PlaneGeometry(SW * 2.0, SH * 1.9), new THREE.MeshBasicMaterial({ map:glowTex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending }));
@@ -157,7 +157,7 @@ async function build() {
 
   /* ---- option C: die-cut "crown with players" panel on the backdrop, just under the sign ---- */
   const playersG = new THREE.Group(); playersG.name = 'playersC'; playersG.visible = false; scene.add(playersG);
-  const PW = 6.0, PH = PW * 1144 / 2000, PTOP = SY - SH/2 + .22;     // ~6 ft wide; crown tips tuck behind the sign
+  const PW = 6.0, PH = PW * 1144 / 2000, PTOP = SY - SH/2 - .25;     // ~6 ft wide; top sits 3 in below the logo
   const pPlate = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map:playersTex, color:0x000000, transparent:true, opacity:.55, alphaTest:.5, depthWrite:false }));
   pPlate.position.set(.05, PTOP - PH/2 - .06, .1); playersG.add(pPlate);                                // soft drop shadow on the slats
   const pFace = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), std({ map:playersTex, roughness:.55, transparent:true, alphaTest:.5 }));
@@ -208,14 +208,14 @@ async function build() {
 
   /* ---- options D and E: the slats are covered by a solid yellow backdrop carrying the full player card (printed, not die-cut) ---- */
   // D and E: the sign is ~23% smaller (20 in) and raised, so the bigger card fits under it without overlap
-  const SIGN_K = 1.7 / SH, SY_DE = 6.4 - 1.7/2;                         // sign spans 4 ft 8 in - 6 ft 5 in
-  const CARD_TOP_D = SY_DE - 1.7/2 - .02;                               // D: card art 4.3 ft tall, cropped to the 8 ft backdrop (its sides are plain yellow)
+  const SIGN_K = 1, SY_DE = SY;                                          // the 1.5 ft logo is the same in every option
+  const CARD_TOP_D = SY - SH/2 - .02;                                   // D: card art 4.4 ft tall, cropped to the 8 ft backdrop (its sides are plain yellow)
   const cardPart = (u0, u1) => { const t = cardTex.clone(); t.repeat.set(u1 - u0, 1); t.offset.set(u0, 0); t.needsUpdate = true; return t; };
   const backY = new THREE.Group(); backY.name = 'backYellow'; backY.visible = false; scene.add(backY);
   const yPlane = new THREE.Mesh(new THREE.PlaneGeometry(8, H), std({ map:yellow, roughness:.85 })); yPlane.position.set(0, H/2, .01); yPlane.receiveShadow = true; backY.add(yPlane);
   signG.userData = { k:SIGN_K, y:SY_DE, y0:SY };
   const cardD = new THREE.Group(); cardD.name = 'cardD'; cardD.visible = false; scene.add(cardD);
-  const cdH = 4.3, cdW = cdH * 3, cdM = new THREE.Mesh(new THREE.PlaneGeometry(8, cdH), std({ map:cardPart(.5 - 4/cdW, .5 + 4/cdW), roughness:.7 }));
+  const cdH = 4.4, cdW = cdH * 3, cdM = new THREE.Mesh(new THREE.PlaneGeometry(8, cdH), std({ map:cardPart(.5 - 4/cdW, .5 + 4/cdW), roughness:.7 }));
   cdM.position.set(0, CARD_TOP_D - cdH/2, .02); cdM.receiveShadow = true; cardD.add(cdM);
   // E: one card, 4.5 ft tall, wrapping the left 4 ft wall and the 8 ft backdrop (12 ft run, sides cropped), its top just under the sign
   const CARD_TOP_E = CARD_TOP_D, ceH = 4.5, ceW = ceH * 3, eu0 = .5 - 6/ceW, eu1 = .5 + 6/ceW, euC = eu0 + 4/ceW;
@@ -532,7 +532,7 @@ async function build() {
   const dims = new THREE.Group(); dims.name = 'dims'; dims.visible = false; scene.add(dims);
   const lineM = new THREE.LineBasicMaterial({ color:GOLD });
   function label(text, pos, into = dims) {
-    const t = canvasTex(512, 128, (g, w, h) => { g.fillStyle = 'rgba(11,11,12,.82)'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e5b83d'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#f3ece3'; g.font = '600 52px "Red Hat Display", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w/2, h/2 + 2); });
+    const t = canvasTex(512, 128, (g, w, h) => { g.fillStyle = 'rgba(11,11,12,.82)'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e5b83d'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); g.fillStyle = '#f3ece3'; let fs = 52; do { g.font = '600 ' + fs + 'px "Red Hat Display", Arial'; fs -= 2; } while (g.measureText(text).width > w - 44 && fs > 24); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, w/2, h/2 + 2); });
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:t, depthTest:false })); s.scale.set(1.9, .475, 1); s.position.copy(pos); s.renderOrder = 10; into.add(s);
   }
   function seg(a, b, text, into = dims) {
@@ -556,11 +556,19 @@ async function build() {
   seg(L0, endL, 'Yellow wall 4 ft', dD); seg(R0, endR, 'Master KV 4 ft', dD);
   seg(endL, endL.clone().addScaledVector(dirOf(-1), 4), 'Curtain 4 ft', dD); seg(endR, endR.clone().addScaledVector(dirOf(1), 4), 'Curtain 4 ft', dD);
   label('Stand shelf 1.9 × 5.4 ft', new THREE.Vector3(cL.x + .3, 5.95, cL.z), dD);
-  label('Player card 8 × 4.3 ft', new THREE.Vector3(0, CARD_TOP_D - cdH - .35, .6), dD);
+  label('Player card 8 × 4.4 ft', new THREE.Vector3(0, CARD_TOP_D - cdH - .35, .6), dD);
   seg(L0, endL, 'Card wall 4 ft', dE); seg(R0, endR, 'Master KV 4 ft', dE);
   seg(endL, endL.clone().addScaledVector(dirOf(-1), 4), 'Curtain 4 ft', dE); seg(endR, endR.clone().addScaledVector(dirOf(1), 4), 'Curtain 4 ft', dE);
   label('Player card 12 × 4.5 ft', new THREE.Vector3(-2, CARD_TOP_E - ceH - .3, .6), dE);
-  label('Lightbox 26 in', new THREE.Vector3(0, SY + SH/2 + .35, .5));
+  label('Logo 1.5 × 1.5 ft', new THREE.Vector3(SW/2 + 1.25, SY, .5));
+  // height guides: backdrop and side walls / curtains are all 7 ft
+  const vseg = (x, z, text, lx = 0, ly = .5) => { const a = new THREE.Vector3(x, 0, z), b = new THREE.Vector3(x, H, z);
+    dims.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), lineM));
+    [0, H].forEach(y => dims.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x - .2, y, z), new THREE.Vector3(x + .2, y, z)]), lineM)));
+    label(text, new THREE.Vector3(x + lx, H * ly, z)); };
+  vseg(3.75, .35, 'Backdrop height 7 ft', -1.05, .36);
+  vseg(endR.x - .25, endR.z - .2, 'Wall height 7 ft', -1.0, .64);
+  vseg(endL.x + .25, endL.z - .2, 'Curtain height 7 ft', 1.05, .64);
   label('Tactical board 2 × 2.8 ft', new THREE.Vector3(easelPos.x, BY + BH + .5, easelPos.z));
 
   document.getElementById('load').remove();
